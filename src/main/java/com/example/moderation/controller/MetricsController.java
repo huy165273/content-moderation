@@ -3,12 +3,16 @@ package com.example.moderation.controller;
 import com.example.moderation.dto.PerformanceMetrics;
 import com.example.moderation.entity.ModerationResult;
 import com.example.moderation.entity.TestRun;
+import com.example.moderation.exception.EntityNotFoundException;
 import com.example.moderation.repository.ModerationResultRepository;
 import com.example.moderation.repository.TestRunRepository;
 import com.example.moderation.service.MetricsService;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -22,6 +26,7 @@ import java.util.Map;
 @RequestMapping("/api/v1/metrics")
 @RequiredArgsConstructor
 @Slf4j
+@Validated // Enable validation for @PathVariable and @RequestParam
 public class MetricsController {
 
     private final MetricsService metricsService;
@@ -37,7 +42,7 @@ public class MetricsController {
 
         PerformanceMetrics metrics = metricsService.calculateMetrics(runId);
         if (metrics == null) {
-            return ResponseEntity.notFound().build();
+            throw new EntityNotFoundException("TestRun", runId);
         }
 
         List<ModerationResult> results = resultRepository.findByRunId(runId);
@@ -59,7 +64,7 @@ public class MetricsController {
 
         PerformanceMetrics metrics = metricsService.calculateMetrics(runId);
         if (metrics == null) {
-            return ResponseEntity.notFound().build();
+            throw new EntityNotFoundException("TestRun", runId);
         }
 
         List<ModerationResult> results = resultRepository.findByRunIdOrderByTimestampAsc(runId);
@@ -87,7 +92,7 @@ public class MetricsController {
     public ResponseEntity<TestRun> getRunById(@PathVariable String runId) {
         return testRunRepository.findByRunId(runId)
                 .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElseThrow(() -> new EntityNotFoundException("TestRun", runId));
     }
 
     /**
@@ -96,11 +101,14 @@ public class MetricsController {
     @PostMapping("/calculate/{runId}")
     public ResponseEntity<PerformanceMetrics> calculateAndSaveMetrics(
             @PathVariable String runId,
-            @RequestParam(defaultValue = "10") int concurrency) {
+            @RequestParam(defaultValue = "10")
+            @Min(value = 1, message = "Concurrency phải >= 1")
+            @Max(value = 500, message = "Concurrency không được vượt quá 500")
+            int concurrency) {
 
         PerformanceMetrics metrics = metricsService.calculateMetrics(runId);
         if (metrics == null) {
-            return ResponseEntity.notFound().build();
+            throw new EntityNotFoundException("TestRun", runId);
         }
 
         metricsService.saveTestRun(runId, metrics, concurrency);

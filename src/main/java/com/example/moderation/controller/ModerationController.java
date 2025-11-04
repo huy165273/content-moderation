@@ -4,9 +4,12 @@ import com.example.moderation.dto.ModerationRequest;
 import com.example.moderation.dto.ModerationResponse;
 import com.example.moderation.service.ContentModerationService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
@@ -22,6 +25,7 @@ import java.util.concurrent.Executors;
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
 @Slf4j
+@Validated // Enable validation for @PathVariable and @RequestParam
 public class ModerationController {
 
     private final ContentModerationService moderationService;
@@ -42,7 +46,10 @@ public class ModerationController {
     @PostMapping("/moderate/batch")
     public ResponseEntity<List<ModerationResponse>> moderateBatch(
             @Valid @RequestBody List<ModerationRequest> requests,
-            @RequestParam(defaultValue = "10") int concurrency) {
+            @RequestParam(defaultValue = "10")
+            @Min(value = 1, message = "Concurrency phải >= 1")
+            @Max(value = 500, message = "Concurrency không được vượt quá 500")
+            int concurrency) {
 
         log.info("Received batch moderation request: {} items, concurrency: {}", requests.size(), concurrency);
 
