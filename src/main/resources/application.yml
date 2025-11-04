@@ -1,0 +1,93 @@
+spring:
+  application:
+    name: content-moderation-perf
+
+  datasource:
+    url: jdbc:sqlite:./data/moderation_results.db
+    driver-class-name: org.sqlite.JDBC
+
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  # Thread pool configuration
+  task:
+    execution:
+      pool:
+        core-size: 20
+        max-size: 200
+        queue-capacity: 500
+
+server:
+  port: 8080
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 20
+
+# Alibaba Cloud Content Moderation Configuration
+alibaba:
+  cloud:
+    # Set these via environment variables for security
+    access-key-id: ${ALIBABA_ACCESS_KEY_ID:your-access-key-id}
+    access-key-secret: ${ALIBABA_ACCESS_KEY_SECRET:your-access-key-secret}
+
+    # Region configuration
+    region-id: ap-southeast-1
+    endpoint: green-cip.ap-southeast-1.aliyuncs.com
+
+    # Service configuration
+    service-name: comment_multilingual_pro_global
+
+    # Timeout configuration (milliseconds)
+    read-timeout: 6000
+    connect-timeout: 3000
+
+    # Mock mode for testing without real API calls
+    mock-mode: ${MOCK_MODE:true}
+
+# Performance Testing Configuration
+performance:
+  # Default concurrency settings
+  default-concurrency: 10
+  max-concurrency: 500
+
+  # Rate limiting (requests per second, 0 = unlimited)
+  rate-limit: 0
+
+  # Retry configuration
+  retry:
+    max-attempts: 3
+    backoff-delay-ms: 1000
+    backoff-multiplier: 2.0
+
+  # Circuit breaker
+  circuit-breaker:
+    enabled: true
+    failure-threshold: 5
+    timeout-duration-ms: 5000
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus,info
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Logging
+logging:
+  level:
+    com.example.moderation: DEBUG
+    org.springframework.web: INFO
+    org.hibernate: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg - traceId=%X{traceId}%n"
