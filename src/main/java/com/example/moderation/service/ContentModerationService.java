@@ -7,6 +7,7 @@ import com.example.moderation.config.AlibabaCloudConfig;
 import com.example.moderation.dto.ModerationRequest;
 import com.example.moderation.dto.ModerationResponse;
 import com.example.moderation.entity.ModerationResult;
+import com.example.moderation.exception.DuplicateRequestIdException;
 import com.example.moderation.repository.ModerationResultRepository;
 import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +46,9 @@ public class ContentModerationService {
 
         try {
             log.debug("Processing moderation request: {}", requestId);
+
+            // Validate: Kiểm tra request ID đã tồn tại chưa
+            validateRequestIdNotExists(requestId);
 
             ModerationResponse response;
             if (config.getMockMode() != null && config.getMockMode()) {
@@ -160,6 +164,20 @@ public class ContentModerationService {
                     .build();
         } else {
             throw new RuntimeException("API returned error: " + apiResponse.getBody().getMessage());
+        }
+    }
+
+    /**
+     * Validate request ID chưa tồn tại trong database.
+     * Throw DuplicateRequestIdException nếu đã tồn tại.
+     *
+     * @param requestId Request ID cần validate
+     * @throws DuplicateRequestIdException nếu request ID đã tồn tại
+     */
+    private void validateRequestIdNotExists(String requestId) {
+        if (resultRepository.existsByRequestId(requestId)) {
+            log.warn("Duplicate request ID detected: {}", requestId);
+            throw new DuplicateRequestIdException(requestId);
         }
     }
 

@@ -260,6 +260,28 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Xử lý DuplicateRequestIdException.
+     * Trả về 400 BAD REQUEST khi request ID đã tồn tại trong database.
+     *
+     * @param ex DuplicateRequestIdException
+     * @param request WebRequest
+     * @return ResponseEntity với ApiError
+     */
+    @ExceptionHandler(DuplicateRequestIdException.class)
+    public ResponseEntity<ApiError> handleDuplicateRequestIdException(
+            DuplicateRequestIdException ex,
+            WebRequest request) {
+
+        String path = getRequestPath(request);
+
+        log.warn("Duplicate request ID at {}: {}", path, ex.getMessage());
+
+        ApiError apiError = ApiError.of(HttpStatus.BAD_REQUEST, ex.getMessage(), path, "DUPLICATE_REQUEST_ID");
+
+        return new ResponseEntity<>(apiError, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
      * Xử lý IllegalArgumentException.
      * Thường dùng cho validation logic đơn giản.
      *
