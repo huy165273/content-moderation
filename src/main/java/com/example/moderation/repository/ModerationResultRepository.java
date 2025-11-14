@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ModerationResultRepository extends JpaRepository<ModerationResult, Long> {
@@ -19,6 +20,14 @@ public interface ModerationResultRepository extends JpaRepository<ModerationResu
      * @return true nếu tồn tại, false nếu chưa tồn tại
      */
     boolean existsByRequestId(String requestId);
+
+    /**
+     * Tìm ModerationResult theo requestId
+     *
+     * @param requestId Request ID
+     * @return Optional ModerationResult
+     */
+    Optional<ModerationResult> findByRequestId(String requestId);
 
     List<ModerationResult> findByRunId(String runId);
 

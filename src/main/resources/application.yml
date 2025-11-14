@@ -30,6 +30,47 @@ server:
       max: 200
       min-spare: 20
 
+# Content Moderation Provider Strategy Configuration
+content-moderation:
+  # Active provider: deepcleer, alibaba, mock
+  active-provider: ${MODERATION_PROVIDER:mock}
+
+  # Fallback configuration
+  fallback:
+    enabled: ${FALLBACK_ENABLED:true}
+    secondary-provider: mock
+
+# DeepCleer Content Moderation Configuration
+deepcleer:
+  api:
+    # Set these via environment variables for security
+    access-key: ${DEEPCLEER_ACCESS_KEY:your-deepcleer-access-key}
+    app-id: ${DEEPCLEER_APP_ID:your-deepcleer-app-id}
+
+    # API endpoints
+    base-url: ${DEEPCLEER_BASE_URL:https://api-text-na.deepcleer.com}
+    text-moderation-endpoint: /api/v3/text/check
+
+    # Timeout configuration (milliseconds)
+    connect-timeout-ms: 3000
+    read-timeout-ms: 6000
+
+    # Enable/disable provider
+    enabled: ${DEEPCLEER_ENABLED:false}
+
+    # Retry configuration
+    retry:
+      max-attempts: 3
+      backoff-delay-ms: 1000
+      backoff-multiplier: 2.0
+
+    # Circuit breaker configuration
+    circuit-breaker:
+      enabled: true
+      failure-rate-threshold: 50
+      wait-duration-ms: 60000
+      sliding-window-size: 10
+
 # Alibaba Cloud Content Moderation Configuration
 alibaba:
   cloud:
@@ -48,7 +89,7 @@ alibaba:
     read-timeout: 6000
     connect-timeout: 3000
 
-    # Mock mode for testing without real API calls
+    # Mock mode for testing without real API calls (controls AlibabaProvider availability)
     mock-mode: ${MOCK_MODE:true}
 
 # Performance Testing Configuration

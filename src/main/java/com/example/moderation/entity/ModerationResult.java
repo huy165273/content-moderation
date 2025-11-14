@@ -24,7 +24,7 @@ import java.time.LocalDateTime;
 public class ModerationResult {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
 
     @Column(nullable = false, unique = true)
@@ -62,4 +62,7 @@ public class ModerationResult {
 
     @Column
     private Double confidenceScore;
+
+    @Column
+    private String providerName; // deepcleer, alibaba, mock
 }
