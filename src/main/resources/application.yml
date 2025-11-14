@@ -33,7 +33,7 @@ server:
 # Content Moderation Provider Strategy Configuration
 content-moderation:
   # Active provider: deepcleer, alibaba, mock
-  active-provider: ${MODERATION_PROVIDER:mock}
+  active-provider: ${MODERATION_PROVIDER:deepcleer}
 
   # Fallback configuration
   fallback:
@@ -44,19 +44,21 @@ content-moderation:
 deepcleer:
   api:
     # Set these via environment variables for security
-    access-key: ${DEEPCLEER_ACCESS_KEY:your-deepcleer-access-key}
-    app-id: ${DEEPCLEER_APP_ID:your-deepcleer-app-id}
+    access-key: ${DEEPCLEER_ACCESS_KEY:3G1pY1HgAfJiNxp54wjd}
+    app-id: ${DEEPCLEER_APP_ID:zim_1165137824}
+    event-id: ${DEEPCLEER_EVENT_ID:article}
 
-    # API endpoints
-    base-url: ${DEEPCLEER_BASE_URL:https://api-text-na.deepcleer.com}
-    text-moderation-endpoint: /api/v3/text/check
+    # API endpoints - FIXED: Use correct Deepcleer API endpoint from documentation
+    # Available clusters: Beijing (bj), Shanghai (sh), USA (fjny), Singapore (xjp)
+    base-url: ${DEEPCLEER_BASE_URL:http://api-text-fjny.fengkongcloud.com}
+    text-moderation-endpoint: /text/v4
 
-    # Timeout configuration (milliseconds)
+    # Timeout configuration (milliseconds) - Deepcleer recommends 1s timeout
     connect-timeout-ms: 3000
     read-timeout-ms: 6000
 
     # Enable/disable provider
-    enabled: ${DEEPCLEER_ENABLED:false}
+    enabled: ${DEEPCLEER_ENABLED:true}
 
     # Retry configuration
     retry:

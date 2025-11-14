@@ -33,12 +33,15 @@ public class DeepCleerProvider implements ModerationProvider {
     private final DeepCleerConfig config;
     private final WebClient webClient;
     private final Gson gson;
+    private final Gson requestGson;  // For serializing requests (no nulls)
     private final CircuitBreaker circuitBreaker;
     private final Retry retry;
 
-    public DeepCleerProvider(DeepCleerConfig config, WebClient.Builder webClientBuilder, Gson gson) {
+    public DeepCleerProvider(DeepCleerConfig config, WebClient.Builder webClientBuilder,
+                            Gson gson, Gson deepcleerGson) {
         this.config = config;
-        this.gson = gson;
+        this.gson = gson;  // For parsing responses
+        this.requestGson = deepcleerGson;  // For serializing requests (no nulls)
 
         // Configure WebClient
         this.webClient = webClientBuilder
@@ -118,44 +121,93 @@ public class DeepCleerProvider implements ModerationProvider {
     }
 
     /**
-     * Build DeepCleer API request
+     * Build DeepCleer API request according to official documentation
+     * Note: tokenId is required by the API
      */
     private DeepCleerRequest buildRequest(String text, Map<String, Object> options) {
-        String eventId = UUID.randomUUID().toString();
+        // Extract parameters from options
+        // tokenId is REQUIRED by DeepCleer API
+        String tokenId = options != null ? (String) options.getOrDefault("userId", "anonymous_user") : "anonymous_user";
+        String ip = options != null ? (String) options.get("ip") : null;
+        String deviceId = options != null ? (String) options.get("deviceId") : null;
+        String nickname = options != null ? (String) options.get("nickname") : null;
+
+        // Build extra metadata if provided
+        Map<String, Object> extra = null;
+        if (options != null && options.containsKey("extra")) {
+            extra = (Map<String, Object>) options.get("extra");
+        }
 
         DeepCleerRequest.DataField data = DeepCleerRequest.DataField.builder()
                 .text(text)
-                .tokenId(options.getOrDefault("userId", "anonymous").toString())
-                .channel("TEXT")
+                .tokenId(tokenId)  // Required field
+                .ip(ip)
+                .deviceId(deviceId)
+                .nickname(nickname)
+                .extra(extra)
                 .build();
+
+        // Type should be TEXTRISK according to documentation
+        String type = options != null ? (String) options.getOrDefault("type", "TEXTRISK") : "TEXTRISK";
 
         return DeepCleerRequest.builder()
                 .accessKey(config.getAccessKey())
                 .appId(config.getAppId())
-                .eventId(eventId)
-                .type(options.getOrDefault("type", "ZHIBO").toString())
+                .eventId(config.getEventId())
+                .type(type)
                 .data(data)
                 .build();
     }
 
     /**
      * Call DeepCleer API
+     * Note: DeepCleer API returns Content-Type: text/plain but body is JSON
      */
     private DeepCleerResponse callApi(DeepCleerRequest request) {
         try {
-            DeepCleerResponse response = webClient.post()
+            // Serialize request using requestGson (which omits null values)
+            String requestBody = requestGson.toJson(request);
+            log.info("=== DeepCleer API Call ===");
+            log.info("Request URL: {}{}", config.getBaseUrl(), config.getTextModerationEndpoint());
+            log.info("Request Body: {}", requestBody);
+            log.info("Request Body Length: {} bytes", requestBody.getBytes().length);
+            log.info("Timeout: {}ms", config.getReadTimeoutMs());
+
+            // DeepCleer API returns Content-Type: text/plain but the body is actually JSON
+            // So we need to retrieve as String first, then parse manually
+            long apiStartTime = System.currentTimeMillis();
+            String responseBody = webClient.post()
                     .uri(config.getTextModerationEndpoint())
-                    .bodyValue(request)
+                    .header("Content-Type", "application/json; charset=UTF-8")
+                    .bodyValue(requestBody)
                     .retrieve()
-                    .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
-                            clientResponse -> clientResponse.bodyToMono(String.class)
-                                    .flatMap(body -> Mono.error(new ModerationException("API Error: " + body))))
-                    .bodyToMono(DeepCleerResponse.class)
-                    .timeout(Duration.ofMillis(config.getReadTimeoutMs()))
-                    .block();
+                    .onStatus(httpStatus -> httpStatus.is4xxClientError() || httpStatus.is5xxServerError(),
+                            clientResponse -> {
+                                int statusCode = clientResponse.statusCode().value();
+                                log.error("HTTP Error Status: {}", statusCode);
+                                return clientResponse.bodyToMono(String.class)
+                                        .flatMap(body -> {
+                                            log.error("HTTP Error Body: {}", body);
+                                            return Mono.error(new ModerationException("API Error [" + statusCode + "]: " + body));
+                                        });
+                            })
+                    .bodyToMono(String.class)
+                    .block(Duration.ofMillis(config.getReadTimeoutMs() + 1000)); // Add 1s buffer to WebClient timeout
+
+            long apiLatency = System.currentTimeMillis() - apiStartTime;
+            log.info("API call completed in {}ms", apiLatency);
+
+            if (responseBody == null || responseBody.isEmpty()) {
+                throw new ModerationException("DeepCleer API returned null or empty response");
+            }
+
+            log.debug("DeepCleer API response body: {}", responseBody);
+
+            // Parse JSON manually since response is text/plain
+            DeepCleerResponse response = gson.fromJson(responseBody, DeepCleerResponse.class);
 
             if (response == null) {
-                throw new ModerationException("DeepCleer API returned null response");
+                throw new ModerationException("Failed to parse DeepCleer response: " + responseBody);
             }
 
             return response;
@@ -167,6 +219,7 @@ public class DeepCleerProvider implements ModerationProvider {
 
     /**
      * Parse DeepCleer response to standard ModerationResult
+     * According to official documentation
      */
     private ModerationResult parseResponse(DeepCleerResponse response, long latency) {
         if (response.getCode() != 1100) {
@@ -177,26 +230,58 @@ public class DeepCleerProvider implements ModerationProvider {
         // Map DeepCleer risk levels to standard levels
         String riskLevel = mapRiskLevel(response.getRiskLevel());
 
-        // Extract labels
+        // Extract labels from the response
         List<String> labels = new ArrayList<>();
-        if (response.getDetail() != null && response.getDetail().getHits() != null) {
-            labels = response.getDetail().getHits().stream()
-                    .map(DeepCleerResponse.Hit::getLabel)
-                    .collect(Collectors.toList());
+        labels.add(response.getRiskLabel1());
+        if (response.getRiskLabel2() != null && !response.getRiskLabel2().isEmpty()) {
+            labels.add(response.getRiskLabel2());
+        }
+        if (response.getRiskLabel3() != null && !response.getRiskLabel3().isEmpty()) {
+            labels.add(response.getRiskLabel3());
         }
 
-        // Build details map
+        // Calculate confidence score from allLabels
+        Double confidenceScore = null;
+        if (response.getAllLabels() != null && !response.getAllLabels().isEmpty()) {
+            // Use the highest probability from all labels
+            confidenceScore = response.getAllLabels().stream()
+                    .map(DeepCleerResponse.AllLabel::getProbability)
+                    .max(Double::compareTo)
+                    .orElse(null);
+        }
+
+        // Build details map with comprehensive information
         Map<String, Object> details = new HashMap<>();
         details.put("code", response.getCode());
+        details.put("requestId", response.getRequestId());
         details.put("originalRiskLevel", response.getRiskLevel());
-        if (response.getDetail() != null) {
-            details.put("hitCount", response.getDetail().getHits() != null ? response.getDetail().getHits().size() : 0);
+        details.put("riskDescription", response.getRiskDescription());
+        details.put("riskLabel1", response.getRiskLabel1());
+        details.put("riskLabel2", response.getRiskLabel2());
+        details.put("riskLabel3", response.getRiskLabel3());
+        details.put("finalResult", response.getFinalResult());
+        details.put("resultType", response.getResultType());
+
+        // Add allLabels information
+        if (response.getAllLabels() != null) {
+            details.put("allLabelsCount", response.getAllLabels().size());
+            details.put("allLabels", response.getAllLabels());
+        }
+
+        // Add auxiliary information if available
+        if (response.getAuxInfo() != null) {
+            details.put("auxInfo", response.getAuxInfo());
+        }
+
+        // Add risk detail if available
+        if (response.getRiskDetail() != null) {
+            details.put("riskDetail", response.getRiskDetail());
         }
 
         return ModerationResult.builder()
                 .providerName("deepcleer")
                 .riskLevel(riskLevel)
-                .confidenceScore(response.getScore())
+                .confidenceScore(confidenceScore)
                 .labels(labels)
                 .details(details)
                 .rawResponse(gson.toJson(response))

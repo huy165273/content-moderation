@@ -14,6 +14,7 @@ public class DeepCleerConfig {
 
     private String accessKey;
     private String appId;
+    private String eventId;
     private String baseUrl;
     private String textModerationEndpoint;
     private Integer connectTimeoutMs;
